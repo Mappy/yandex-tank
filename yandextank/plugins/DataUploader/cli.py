@@ -93,7 +93,8 @@ def send_config_snapshot(config, lp_job):
 
 
 def edit_metainfo(lp_config, lp_job):
-    lp_job.edit_metainfo(regression_component=lp_config.get('component'),
+    lp_job.edit_metainfo(is_regression=lp_config.get('regress'),
+                         regression_component=lp_config.get('component'),
                          cmdline=lp_config.get('cmdline'),
                          ammo_path=lp_config.get('ammo_path'),
                          loop_count=lp_config.get('loop_count'))
@@ -114,12 +115,8 @@ def get_plugin_dir(shooting_dir):
 def make_symlink(shooting_dir, name):
     plugin_dir = get_plugin_dir(shooting_dir)
     link_name = os.path.join(plugin_dir, str(name))
-    try:
-        os.symlink(os.path.relpath(shooting_dir, plugin_dir), link_name)
-    except OSError:
-        logger.warning('Unable to create symlink for artifact: %s', link_name)
-    else:
-        logger.info('Symlink created: {}'.format(os.path.abspath(link_name)))
+    os.symlink(os.path.relpath(shooting_dir, plugin_dir), link_name)
+    logger.info('Symlink created: {}'.format(os.path.abspath(link_name)))
 
 
 class ConfigError(Exception):

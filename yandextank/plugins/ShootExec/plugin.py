@@ -5,8 +5,7 @@ import os.path
 import subprocess
 import time
 
-from ...common.interfaces import AbstractPlugin, GeneratorPlugin, AggregateResultListener, AbstractInfoWidget, \
-    StatsReader
+from ...common.interfaces import AbstractPlugin, GeneratorPlugin, AggregateResultListener, AbstractInfoWidget
 from ...common.util import FileScanner
 from ..Console import Plugin as ConsolePlugin
 from ..Phantom import PhantomReader
@@ -196,7 +195,7 @@ class _InfoWidget(AbstractInfoWidget, AggregateResultListener):
         pass
 
 
-class _FileStatsReader(FileScanner, StatsReader):
+class _FileStatsReader(FileScanner):
     """
     Read shooting stats line by line
 
@@ -218,11 +217,17 @@ class _FileStatsReader(FileScanner, StatsReader):
             curr_ts = int(float(timestamp))  # We allow floats here, but tank expects only seconds
             if self.__last_ts < curr_ts:
                 self.__last_ts = curr_ts
-                results.append(self.stats_item(self.__last_ts, float(rps), float(instances)))
+                results.append({
+                    'ts': self.__last_ts,
+                    'metrics': {
+                        'reqps': float(rps),
+                        'instances': float(instances),
+                    },
+                })
         return results
 
 
-class _DummyStatsReader(StatsReader):
+class _DummyStatsReader(object):
     """
     Dummy stats reader for shooters without stats file
     """
@@ -235,7 +240,13 @@ class _DummyStatsReader(StatsReader):
         while not self.__closed:
             cur_ts = int(time.time())
             if cur_ts > self.__last_ts:
-                yield [self.stats_item(cur_ts, 0, 0)]
+                yield [{
+                    'ts': cur_ts,
+                    'metrics': {
+                        'instances': 0,
+                        'reqps': 0,
+                    },
+                }]
                 self.__last_ts = cur_ts
             else:
                 yield []

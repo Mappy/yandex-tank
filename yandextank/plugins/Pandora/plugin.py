@@ -4,18 +4,18 @@ import logging
 import subprocess
 import time
 
-from netort.resource import manager as resource_manager
-
+from yandextank.common.resource import manager as resource_manager
 from .reader import PandoraStatsReader
 from ..Console import Plugin as ConsolePlugin
 from ..Console import screen as ConsoleScreen
 from ..Phantom import PhantomReader
-from ...common.interfaces import AbstractInfoWidget, GeneratorPlugin
+from ...common.interfaces import AbstractPlugin, \
+    AbstractInfoWidget, GeneratorPlugin
 
 logger = logging.getLogger(__name__)
 
 
-class Plugin(GeneratorPlugin):
+class Plugin(AbstractPlugin, GeneratorPlugin):
     """    Pandora load generator plugin    """
 
     OPTION_CONFIG = "config"
@@ -23,10 +23,13 @@ class Plugin(GeneratorPlugin):
 
     def __init__(self, core, cfg, cfg_updater):
         super(Plugin, self).__init__(core, cfg, cfg_updater)
+        self.stats_reader = None
+        self.reader = None
+        self.buffered_seconds = 2
         self.enum_ammo = False
+        self.process = None
+        self.process_stderr = None
         self.process_start_time = None
-        self.pandora_cmd = None
-        self.pandora_config_file = None
         self.custom_config = False
         self.sample_log = "./phout.log"
         self.expvar = True
@@ -47,7 +50,6 @@ class Plugin(GeneratorPlugin):
         self.expvar = self.get_option("expvar")
         self.pandora_cmd = self.get_option("pandora_cmd")
         self.buffered_seconds = self.get_option("buffered_seconds")
-        self.affinity = self.get_option("affinity", "")
         with open(self.sample_log, 'w'):
             pass
         self.core.add_artifact_file(self.sample_log)
@@ -99,8 +101,6 @@ class Plugin(GeneratorPlugin):
 
     def start_test(self):
         args = [self.pandora_cmd, "-expvar", self.pandora_config_file]
-        if self.affinity:
-            self.core.__setup_affinity(self.affinity, args=args)
         logger.info("Starting: %s", args)
         self.process_start_time = time.time()
         process_stderr_file = self.core.mkstemp(".log", "pandora_")

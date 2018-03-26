@@ -1,6 +1,6 @@
 import logging
 
-from netort.resource import manager as resource
+from ..common.resource import manager as resource
 
 from . import info
 from . import instance_plan as ip
@@ -25,7 +25,7 @@ class ComponentFactory():
             autocases=None,
             enum_ammo=False,
             ammo_type='phantom',
-            chosen_cases=None, ):
+            chosen_cases=[], ):
         self.log = logging.getLogger(__name__)
         self.ammo_file = ammo_file
         self.ammo_type = ammo_type
@@ -49,7 +49,7 @@ class ComponentFactory():
             info.status.ammo_limit = len(self.uris) * loop_limit
         self.headers = headers
         self.marker = get_marker(autocases, enum_ammo)
-        self.chosen_cases = chosen_cases or []
+        self.chosen_cases = chosen_cases
 
     def get_load_plan(self):
         """

@@ -60,7 +60,7 @@ class PhantomConfig:
         """        Read phantom tool specific options        """
         self.threads = self.cfg["threads"] or str(int(multiprocessing.cpu_count() / 2) + 1)
         self.phantom_modules_path = self.cfg["phantom_modules_path"]
-        self.additional_libs = ' '.join(self.cfg["additional_libs"])
+        self.additional_libs = self.cfg["additional_libs"]
         self.answ_log_level = self.cfg["writelog"]
         if self.answ_log_level.lower() in ['0', 'false']:
             self.answ_log_level = 'none'
@@ -130,8 +130,9 @@ class PhantomConfig:
         tpl = string.Template(template_str)
         config = tpl.substitute(kwargs)
 
-        with open(filename, 'w') as conffile:
-            conffile.write(config)
+        handle = open(filename, 'w')
+        handle.write(config)
+        handle.close()
         return filename
 
     def set_timeout(self, timeout):
@@ -343,7 +344,7 @@ class StreamConfig:
         if self.phantom_http_field:
             tune += "field = " + self.phantom_http_field + "\n"
         if self.phantom_http_field_num:
-            tune += "field_num = {}\n".format(self.phantom_http_field_num)
+            tune += "field_num = " + self.phantom_http_field_num + "\n"
         if self.phantom_http_line:
             tune += "line = " + self.phantom_http_line + "\n"
         if tune:
@@ -355,7 +356,7 @@ class StreamConfig:
             fname = 'phantom_benchmark_main.tpl'
         else:
             fname = 'phantom_benchmark_additional.tpl'
-        template_str = resource_string(
+        template_str = template_str = resource_string(
             __name__, "config/" + fname)
         tpl = string.Template(template_str)
         config = tpl.substitute(kwargs)

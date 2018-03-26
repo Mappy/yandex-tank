@@ -1,20 +1,47 @@
+'''
+Common utilities
+'''
 import collections
 import os
 import pwd
 import socket
+import threading as th
 import traceback
+
 import http.client
 import logging
 import errno
 import itertools
 import re
 import select
+import shlex
 import psutil
+import subprocess
 import argparse
-
 from paramiko import SSHClient, AutoAddPolicy
 
 logger = logging.getLogger(__name__)
+
+
+class Drain(th.Thread):
+    """
+    Drain a generator to a destination that answers to put(), in a thread
+    """
+
+    def __init__(self, source, destination):
+        super(Drain, self).__init__()
+        self.source = source
+        self.destination = destination
+        self._interrupted = th.Event()
+
+    def run(self):
+        for item in self.source:
+            self.destination.put(item)
+            if self._interrupted.is_set():
+                break
+
+    def close(self):
+        self._interrupted.set()
 
 
 class SecuredShell(object):
@@ -87,7 +114,6 @@ http://uucode.com/blog/2015/02/20/workaround-for-ctr-mode-needs-counter-paramete
         logger.info(
             "Sending [{local}] to {host}:[{remote}]".format(
                 local=local_path, host=self.host, remote=remote_path))
-
         with self.connect() as client, client.open_sftp() as sftp:
             result = sftp.put(local_path, remote_path)
         return result
@@ -122,20 +148,7 @@ def check_ssh_connection():
     logging.info(
         "Checking SSH to %s@%s:%d", args.username, args.endpoint, args.port)
     ssh = SecuredShell(args.endpoint, args.port, args.username, 10)
-    data = ssh.execute("ls -l")
-    logging.info('Output data of ssh.execute("ls -l"): %s', data[0])
-    logging.info('Output errors of ssh.execute("ls -l"): %s', data[1])
-    logging.info('Output code of ssh.execute("ls -l"): %s', data[2])
-
-    logging.info('Trying to create paramiko ssh connection client')
-    client = ssh.connect()
-    logging.info('Created paramiko ssh connection client: %s', client)
-    logging.info('Trying to open sftp')
-    sftp = client.open_sftp()
-    logging.info('Opened sftp: %s', sftp)
-    logging.info('Trying to send test file to /tmp')
-    res = sftp.put('/usr/lib/yandex/yandex-tank/bin/tank.log', '/opt')
-    logging.info('Result of sending test file: %s', res)
+    print(ssh.execute("ls -l"))
 
 
 class AsyncSession(object):
@@ -423,6 +436,40 @@ def pid_exists(pid):
         return p.status != psutil.STATUS_ZOMBIE
 
 
+def execute(cmd, shell=False, poll_period=1.0, catch_out=False):
+    """
+    Wrapper for Popen
+    """
+    log = logging.getLogger(__name__)
+    log.debug("Starting: %s", cmd)
+
+    stdout = ""
+    stderr = ""
+
+    if not shell and isinstance(cmd, basestring):
+        cmd = shlex.split(cmd)
+
+    if catch_out:
+        process = subprocess.Popen(
+            cmd,
+            shell=shell,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            close_fds=True)
+    else:
+        process = subprocess.Popen(cmd, shell=shell, close_fds=True)
+
+    stdout, stderr = process.communicate()
+    if stderr:
+        log.error("There were errors:\n%s", stderr)
+
+    if stdout:
+        log.debug("Process output:\n%s", stdout)
+    returncode = process.returncode
+    log.debug("Process exit code: %s", returncode)
+    return returncode, stdout, stderr
+
+
 def splitstring(string):
     """
     >>> string = 'apple orange "banana tree" green'
@@ -471,36 +518,16 @@ class AddressWizard:
 
         port = None
 
-        braceport_re = re.compile(r"""
-            ^
-            \[           # opening brace
-            \s?          # space sym?
-            (\S+)        # address - string
-            \s?          # space sym?
-            \]           # closing brace
-            :            # port separator
-            \s?          # space sym?
-            (\d+)        # port
-            $
-        """, re.X)
-        braceonly_re = re.compile(r"""
-            ^
-            \[           # opening brace
-            \s?          # space sym?
-            (\S+)        # address - string
-            \s?          # space sym?
-            \]           # closing brace
-            $
-        """, re.X)
-
-        if braceport_re.match(address_str):
+        braceport_pat = "^\[([^]]+)\]:(\d+)$"
+        braceonly_pat = "^\[([^]]+)\]$"
+        if re.match(braceport_pat, address_str):
             logger.debug("Braces and port present")
-            match = braceport_re.match(address_str)
+            match = re.match(braceport_pat, address_str)
             logger.debug("Match: %s %s ", match.group(1), match.group(2))
             address_str, port = match.group(1), match.group(2)
-        elif braceonly_re.match(address_str):
+        elif re.match(braceonly_pat, address_str):
             logger.debug("Braces only present")
-            match = braceonly_re.match(address_str)
+            match = re.match(braceonly_pat, address_str)
             logger.debug("Match: %s", match.group(1))
             address_str = match.group(1)
         else:
@@ -515,9 +542,12 @@ class AddressWizard:
         try:
             resolved = self.lookup_fn(address_str, port)
             logger.debug("Lookup result: %s", resolved)
-        except Exception:
-            logger.debug("Exception trying to resolve hostname %s : %s", address_str, exc_info=True)
-            raise
+        except Exception as exc:
+            logger.debug(
+                "Exception trying to resolve hostname %s : %s", address_str,
+                traceback.format_exc(exc))
+            msg = "Failed to resolve hostname: %s. Error: %s"
+            raise RuntimeError(msg % (address_str, exc))
 
         for (family, socktype, proto, canonname, sockaddr) in resolved:
             is_v6 = family == socket.AF_INET6
@@ -533,12 +563,13 @@ class AddressWizard:
 
             if do_test:
                 try:
-                    logger.info("Testing connection to resolved address %s and port %s", parsed_ip, port)
                     self.__test(family, (parsed_ip, port))
-                except RuntimeError:
-                    logger.info("Failed TCP connection test using [%s]:%s", parsed_ip, port)
-                    logger.debug("Failed TCP connection test using [%s]:%s", parsed_ip, port, exc_info=True)
+                except RuntimeError as exc:
+                    logger.warn(
+                        "Failed TCP connection test using [%s]:%s", parsed_ip,
+                        port)
                     continue
+
             return is_v6, parsed_ip, int(port), address_str
 
         msg = "All connection attempts failed for %s, use {phantom.connection_test: false} to disable it"
@@ -557,6 +588,16 @@ class AddressWizard:
             raise RuntimeError(msg % (sa[0], sa[1]))
         finally:
             test_sock.close()
+
+
+class Chopper(object):
+    def __init__(self, source):
+        self.source = source
+
+    def __iter__(self):
+        for chunk in self.source:
+            for item in chunk:
+                yield item
 
 
 def recursive_dict_update(d1, d2):

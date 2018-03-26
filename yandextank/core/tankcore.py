@@ -10,6 +10,10 @@ import socket
 import tempfile
 import time
 import traceback
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 import pkg_resources
 import sys
@@ -21,12 +25,12 @@ from builtins import str
 from yandextank.common.exceptions import PluginNotPrepared
 from yandextank.common.interfaces import GeneratorPlugin
 from yandextank.validator.validator import TankConfig
-from yandextank.aggregator import TankAggregator
-from ..common.util import update_status, pid_exists
-from ..plugins.Telegraf import Plugin as TelegrafPlugin
 
-from netort.resource import manager as resource
-from netort.process import execute
+from ..common.util import update_status, execute, pid_exists
+
+from ..common.resource import manager as resource
+from yandextank.aggregator import TankAggregator
+from ..plugins.Telegraf import Plugin as TelegrafPlugin
 
 if sys.version_info[0] < 3:
     import ConfigParser
@@ -129,7 +133,12 @@ class TankCore(object):
     @property
     def cfg_snapshot(self):
         if not self._cfg_snapshot:
-            self._cfg_snapshot = str(self.config)
+            if self.cfg_depr:
+                output = StringIO()
+                self.cfg_depr.write(output)
+                self._cfg_snapshot = output.getvalue()
+            else:
+                self._cfg_snapshot = str(self.config)
         return self._cfg_snapshot
 
     @staticmethod
@@ -158,7 +167,8 @@ class TankCore(object):
     @property
     def artifacts_base_dir(self):
         if not self._artifacts_base_dir:
-            artifacts_base_dir = os.path.expanduser(self.get_option(self.SECTION, "artifacts_base_dir"))
+            artifacts_base_dir = os.path.expanduser(
+                self.get_option(self.SECTION, "artifacts_base_dir"))
             if not os.path.exists(artifacts_base_dir):
                 os.makedirs(artifacts_base_dir)
                 os.chmod(self.artifacts_base_dir, 0o755)
@@ -170,6 +180,11 @@ class TankCore(object):
         Tells core to take plugin options and instantiate plugin classes
         """
         logger.info("Loading plugins...")
+
+        self.taskset_path = self.get_option(
+            self.SECTION, 'taskset_path')
+        self.taskset_affinity = self.get_option(self.SECTION, 'affinity')
+
         for (plugin_name, plugin_path, plugin_cfg, cfg_updater) in self.config.plugins:
             logger.debug("Loading plugin %s from %s", plugin_name, plugin_path)
             if plugin_path is "yandextank.plugins.Overload":
@@ -181,16 +196,38 @@ class TankCore(object):
             try:
                 plugin = il.import_module(plugin_path)
             except ImportError:
-                logger.warning('Plugin name %s path %s import error', plugin_name, plugin_path)
-                logger.debug('Plugin name %s path %s import error', plugin_name, plugin_path, exc_info=True)
-                raise
+                if plugin_path.startswith("yatank_internal_"):
+                    logger.warning(
+                        "Deprecated plugin path format: %s\n"
+                        "Tank plugins are now orginized using"
+                        " namespace packages. Example:\n"
+                        "    plugin_jmeter=yandextank.plugins.JMeter",
+                        plugin_path)
+                    plugin_path = plugin_path.replace(
+                        "yatank_internal_", "yandextank.plugins.")
+                if plugin_path.startswith("yatank_"):
+                    logger.warning(
+                        "Deprecated plugin path format: %s\n"
+                        "Tank plugins are now orginized using"
+                        " namespace packages. Example:\n"
+                        "    plugin_jmeter=yandextank.plugins.JMeter",
+                        plugin_path)
+
+                    plugin_path = plugin_path.replace(
+                        "yatank_", "yandextank.plugins.")
+                logger.warning("Patched plugin path: %s", plugin_path)
+                plugin = il.import_module(plugin_path)
             try:
                 instance = getattr(plugin, 'Plugin')(self, cfg=plugin_cfg, cfg_updater=cfg_updater)
             except AttributeError:
-                logger.warning('Plugin %s classname should be `Plugin`', plugin_name)
-                raise
-            else:
-                self.register_plugin(self.PLUGIN_PREFIX + plugin_name, instance)
+                logger.warning(
+                    "Deprecated plugin classname: %s. Should be 'Plugin'",
+                    plugin)
+                instance = getattr(
+                    plugin, plugin_path.split('.')[-1] + 'Plugin')(self)
+
+            self.register_plugin(self.PLUGIN_PREFIX + plugin_name, instance)
+
         logger.debug("Plugin instances: %s", self._plugins)
 
     @property
@@ -205,10 +242,10 @@ class TankCore(object):
             # generator plugin
             try:
                 gen = self.get_plugin_of_type(GeneratorPlugin)
+                # aggregator
             except KeyError:
                 logger.warning("Load generator not found")
                 gen = GeneratorPlugin()
-            # aggregator
             aggregator = TankAggregator(gen)
             self._job = Job(monitoring_plugin=mon,
                             generator_plugin=gen,
@@ -221,9 +258,8 @@ class TankCore(object):
         self.publish("core", "stage", "configure")
 
         logger.info("Configuring plugins...")
-        self.taskset_affinity = self.get_option(self.SECTION, 'affinity')
-        if self.taskset_affinity:
-            self.__setup_taskset(self.taskset_affinity, pid=os.getpid())
+        if self.taskset_affinity != '':
+            self.taskset(os.getpid(), self.taskset_path, self.taskset_affinity)
 
         for plugin in self.plugins.values():
             logger.debug("Configuring %s", plugin)
@@ -255,7 +291,7 @@ class TankCore(object):
         """
 
         logger.info("Waiting for test to finish...")
-        logger.info('Artifacts dir: {dir}'.format(dir=self.artifacts_dir))
+        logger.info('Artifacts dir: {}'.format(self.artifacts_dir))
         self.publish("core", "stage", "shoot")
         if not self.plugins:
             raise RuntimeError("It's strange: we have no plugins loaded...")
@@ -273,7 +309,7 @@ class TankCore(object):
             end_time = time.time()
             diff = end_time - begin_time
             logger.debug("Polling took %s", diff)
-            logger.debug("Tank status: %s", json.dumps(self.status))
+            logger.debug("Tank status:\n%s", json.dumps(self.status, indent=2))
             # screen refresh every 0.5 s
             if diff < 0.5:
                 time.sleep(0.5 - diff)
@@ -292,8 +328,10 @@ class TankCore(object):
                 logger.debug("RC before: %s", retcode)
                 retcode = plugin.end_test(retcode)
                 logger.debug("RC after: %s", retcode)
-            except Exception:  # FIXME too broad exception clause
-                logger.error("Failed finishing plugin %s: %s", plugin, exc_info=True)
+            except Exception as ex:
+                logger.error("Failed finishing plugin %s: %s", plugin, ex)
+                logger.debug(
+                    "Failed finishing plugin: %s", traceback.format_exc(ex))
                 if not retcode:
                     retcode = 1
         return retcode
@@ -304,37 +342,36 @@ class TankCore(object):
         """
         logger.info("Post-processing test...")
         self.publish("core", "stage", "post_process")
+
         for plugin in self.plugins.values():
             logger.debug("Post-process %s", plugin)
             try:
                 logger.debug("RC before: %s", retcode)
                 retcode = plugin.post_process(retcode)
                 logger.debug("RC after: %s", retcode)
-            except Exception:  # FIXME too broad exception clause
-                logger.error("Failed post-processing plugin %s: %s", plugin, exc_info=True)
+            except Exception as ex:
+                logger.error("Failed post-processing plugin %s: %s", plugin, ex)
+                logger.debug(
+                    "Failed post-processing plugin: %s",
+                    traceback.format_exc(ex))
                 if not retcode:
                     retcode = 1
         self.__collect_artifacts()
+
         return retcode
 
-    def __setup_taskset(self, affinity, pid=None, args=None):
-        """ if pid specified: set process w/ pid `pid` CPU affinity to specified `affinity` core(s)
-            if args specified: modify list of args for Popen to start w/ taskset w/ affinity `affinity`
-        """
-        self.taskset_path = self.get_option(self.SECTION, 'taskset_path')
-
-        if args:
-            return [self.taskset_path, '-c', affinity] + args
-
-        if pid:
-            args = "%s -pc %s %s" % (self.taskset_path, affinity, pid)
-            retcode, stdout, stderr = execute(args, shell=True, poll_period=0.1, catch_out=True)
-            logger.debug('taskset for pid %s stdout: %s', pid, stdout)
-            if retcode == 0:
-                logger.info("Enabled taskset for pid %s with affinity %s", str(pid), affinity)
-            else:
-                logger.debug('Taskset setup failed w/ retcode :%s', retcode)
+    def taskset(self, pid, path, affinity):
+        if affinity:
+            args = "%s -pc %s %s" % (path, affinity, pid)
+            retcode, stdout, stderr = execute(
+                args, shell=True, poll_period=0.1, catch_out=True)
+            logger.debug('taskset stdout: %s', stdout)
+            if retcode != 0:
                 raise KeyError(stderr)
+            else:
+                logger.info(
+                    "Enabled taskset for pid %s with affinity %s",
+                    str(pid), affinity)
 
     def __collect_artifacts(self):
         logger.debug("Collecting artifacts")
@@ -363,23 +400,12 @@ class TankCore(object):
         """
         logger.debug("Searching for plugin: %s", plugin_class)
         matches = [plugin for plugin in self.plugins.values() if isinstance(plugin, plugin_class)]
-        if matches:
+        if len(matches) > 0:
             if len(matches) > 1:
                 logger.debug(
                     "More then one plugin of type %s found. Using first one.",
                     plugin_class)
             return matches[-1]
-        else:
-            raise KeyError("Requested plugin type not found: %s" % plugin_class)
-
-    def get_plugins_of_type(self, plugin_class):
-        """
-        Retrieve a list of plugins of desired class, KeyError raised otherwise
-        """
-        logger.debug("Searching for plugins: %s", plugin_class)
-        matches = [plugin for plugin in self.plugins.values() if isinstance(plugin, plugin_class)]
-        if matches:
-            return matches
         else:
             raise KeyError("Requested plugin type not found: %s" % plugin_class)
 

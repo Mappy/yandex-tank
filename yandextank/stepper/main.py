@@ -5,10 +5,10 @@ import hashlib
 import json
 import logging
 import os
+import re
 
 from builtins import zip
-
-from netort.resource import manager as resource
+from ..common.resource import manager as resource
 
 from . import format as fmt
 from . import info
@@ -171,10 +171,11 @@ class StepperWrapper(object):
 
         self.instances = int(
             self.get_option(self.OPTION_INSTANCES_LIMIT, '1000'))
-        self.uris = self.get_option("uris", [])
+        self.uris = self.get_option("uris", '').strip().split("\n")
         while '' in self.uris:
             self.uris.remove('')
-        self.headers = self.get_option("headers")
+        rx = re.compile('\[(.*?)\]')
+        self.headers = rx.findall(self.get_option("headers"))
         self.http_ver = self.get_option("header_http")
         self.autocases = self.get_option("autocases")
         self.enum_ammo = self.get_option("enum_ammo")

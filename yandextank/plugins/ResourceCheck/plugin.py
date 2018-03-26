@@ -4,10 +4,8 @@ import logging
 import time
 
 import psutil
-from ...common.util import expand_to_seconds
+from ...common.util import expand_to_seconds, execute
 from ...common.interfaces import AbstractPlugin
-
-from netort.process import execute
 
 
 class Plugin(AbstractPlugin):

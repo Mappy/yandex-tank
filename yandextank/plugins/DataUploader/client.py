@@ -86,7 +86,6 @@ class APIClient(object):
             super(self.__class__, self).__init__(self.message)
 
     class StoppedFromOnline(Exception):
-        """http code 410"""
         message = "Shooting is stopped from online"
 
     class JobNotCreated(Exception):
@@ -149,7 +148,8 @@ class APIClient(object):
             'headers': str(self.filter_headers(request.headers)),
             'body': request.body.replace('\n', '\\n') if isinstance(request.body, str) else request.body
         }
-        return """Request: {}""".format(json.dumps(request_info))
+        return """
+        Request: {}""".format(json.dumps(request_info))
 
     def format_response_info(self, resp, request_id):
         response_info = {
@@ -160,7 +160,8 @@ class APIClient(object):
             'headers': str(self.filter_headers(resp.headers)),
             'content': resp.content.replace('\n', '\\n') if isinstance(resp.content, str) else resp.content
         }
-        return """Response: {}""".format(json.dumps(response_info))
+        return """
+        Response: {}""".format(json.dumps(response_info))
 
     def __make_api_request(
             self,
@@ -367,6 +368,7 @@ class APIClient(object):
             ammo_path,
             loop_count,
             version_tested,
+            is_regression,
             component,
             cmdline,
             is_starred,
@@ -379,6 +381,7 @@ class APIClient(object):
             'ammo': ammo_path,
             'loop': loop_count,
             'version': version_tested,
+            'regression': str(is_regression),
             'component': component,
             'tank_type': int(tank_type),
             'command_line': cmdline,
@@ -607,19 +610,11 @@ class APIClient(object):
     def send_config_snapshot(self, jobno, config, trace=False):
         logger.debug("Sending config snapshot")
         addr = "api/job/%s/configinfo.txt" % jobno
-        self.__post_raw(addr, {"configinfo": unicode(config)}, trace=trace)
-
-    def link_mobile_job(self, lp_key, mobile_key):
-        addr = "/api/job/{jobno}/edit.json".format(jobno=lp_key)
-        data = {
-            'mobile_key': mobile_key
-        }
-        response = self.__post(addr, data)
-        return response
+        self.__post_raw(addr, {"configinfo": config}, trace=trace)
 
 
 class OverloadClient(APIClient):
-    """ mocks below for nonexistent backend methods """
+
     def send_status(self, jobno, upload_token, status, trace=False):
         return
 
@@ -627,7 +622,4 @@ class OverloadClient(APIClient):
         return
 
     def unlock_target(self, *args, **kwargs):
-        return
-
-    def link_mobile_job(self, lp_key, mobile_key):
         return

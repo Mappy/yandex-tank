@@ -1,15 +1,14 @@
 """ Core module to calculate aggregate data """
 import json
 import logging
-import queue as q
 
+import queue as q
 from pkg_resources import resource_string
 
 from .aggregator import Aggregator, DataPoller
 from .chopper import TimeChopper
-from yandextank.common.interfaces import AggregateResultListener, StatsReader
-
-from netort.data_processing import Drain, Chopper, get_nowait_from_queue
+from yandextank.common.interfaces import AggregateResultListener
+from yandextank.common.util import Drain, Chopper
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +19,16 @@ class LoggingListener(AggregateResultListener):
     def on_aggregated_data(self, data, stats):
         logger.info("Got aggregated sample:\n%s", json.dumps(data, indent=2))
         logger.info("Stats:\n%s", json.dumps(stats, indent=2))
+
+
+def get_from_queue(queue):
+    data = []
+    for _ in range(queue.qsize()):
+        try:
+            data.append(queue.get_nowait())
+        except q.Empty:
+            break
+    return data
 
 
 class TankAggregator(object):
@@ -45,19 +54,12 @@ class TankAggregator(object):
         self.stats = q.Queue()
         self.data_cache = {}
         self.stat_cache = {}
-        self.reader = None
-        self.stats_reader = None
-        self.drain = None
-        self.stats_drain = None
-
-    @staticmethod
-    def load_config():
-        return json.loads(resource_string(__name__, 'config/phout.json').decode('utf8'))
 
     def start_test(self):
         self.reader = self.generator.get_reader()
         self.stats_reader = self.generator.get_stats_reader()
-        aggregator_config = self.load_config()
+        aggregator_config = json.loads(
+            resource_string(__name__, 'config/phout.json').decode('utf8'))
         verbose_histogram = True
         if verbose_histogram:
             logger.info("using verbose histogram")
@@ -78,14 +80,14 @@ class TankAggregator(object):
         else:
             logger.warning("Generator not found. Generator must provide a reader and a stats_reader interface")
 
-    def _collect_data(self, end=False):
+    def _collect_data(self):
         """
         Collect data, cache it and send to listeners
         """
-        data = get_nowait_from_queue(self.results)
-        stats = get_nowait_from_queue(self.stats)
-        logger.debug("Data timestamps: %s" % [d.get('ts') for d in data])
-        logger.debug("Stats timestamps: %s" % [d.get('ts') for d in stats])
+        data = get_from_queue(self.results)
+        stats = get_from_queue(self.stats)
+        logger.debug("Data timestamps:\n%s" % [d.get('ts') for d in data])
+        logger.debug("Stats timestamps:\n%s" % [d.get('ts') for d in stats])
         for item in data:
             ts = item['ts']
             if ts in self.stat_cache:
@@ -104,9 +106,6 @@ class TankAggregator(object):
                 self.__notify_listeners(data_item, stat_item)
             else:
                 self.stat_cache[ts] = item
-        if end and len(self.data_cache) > 0:
-            for ts, data_item in sorted(self.data_cache.items(), key=lambda i: i[0]):
-                self.__notify_listeners(data_item, StatsReader.stats_item(ts, 0, 0))
 
     def is_test_finished(self):
         self._collect_data()
@@ -122,7 +121,7 @@ class TankAggregator(object):
             self.drain.join()
         if self.stats_drain:
             self.stats_drain.join()
-        self._collect_data(end=True)
+        self._collect_data()
         return retcode
 
     def add_result_listener(self, listener):

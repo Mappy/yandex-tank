@@ -43,7 +43,7 @@ CFG1 = {
         'enabled': True,
         'address': 'lunapark.test.yandex-team.ru',
         'header_http': '1.1',
-        'uris': ['/'],
+        'uris': '/',
         'load_profile': {'load_type': 'rps', 'schedule': 'line(1, 10, 1m)'},
         'phantom_path': './phantom_mock.sh',
         'connection_test': False
@@ -72,7 +72,7 @@ CFG2 = {
         'enabled': True,
         'address': 'lunapark.test.yandex-team.ru',
         'header_http': '1.1',
-        'uris': ['/'],
+        'uris': '/',
         'load_profile': {'load_type': 'rps', 'schedule': 'line(1, 10, 1m)'},
         'connection_test': False
     },
@@ -100,11 +100,11 @@ def setup_module(module):
     (CFG1,
      {'plugin_telegraf', 'plugin_phantom', 'plugin_lunapark',
       'plugin_rcheck', 'plugin_shellexec', 'plugin_autostop',
-      'plugin_console', 'plugin_rcassert', 'plugin_json_report',
+      'plugin_console', 'plugin_tips', 'plugin_rcassert', 'plugin_json_report',
       }),
     (CFG2,
      {'plugin_phantom', 'plugin_lunapark', 'plugin_rcheck',
-      'plugin_autostop', 'plugin_console',
+      'plugin_autostop', 'plugin_console', 'plugin_tips',
       'plugin_rcassert', 'plugin_json_report',
       }
      )

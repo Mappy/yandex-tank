@@ -1,5 +1,5 @@
 import pytest
-from yandextank.plugins.DataUploader.cli import from_tank_config, get_logger
+from yandextank.plugins.DataUploader.cli import from_tank_config
 
 
 @pytest.mark.parametrize('test_dir, expected', [
@@ -23,5 +23,4 @@ from yandextank.plugins.DataUploader.cli import from_tank_config, get_logger
      {'enabled': False, 'package': 'yandextank.plugins.DataUploader'}),
 ])
 def test_from_tank_config(test_dir, expected):
-    get_logger()
     assert from_tank_config(test_dir) == expected

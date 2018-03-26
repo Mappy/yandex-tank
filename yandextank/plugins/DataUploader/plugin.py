@@ -92,8 +92,6 @@ class Plugin(AbstractPlugin, AggregateResultListener,
         self._info = None
         self.locked_targets = []
 
-        self.finished = False
-
     @staticmethod
     def get_key():
         return __file__
@@ -114,6 +112,7 @@ class Plugin(AbstractPlugin, AggregateResultListener,
             "job_dsc",
             "notify",
             "ver", "component",
+            "regress",
             "operator",
             "jobno_file",
             "ignore_target_lock",
@@ -236,6 +235,9 @@ class Plugin(AbstractPlugin, AggregateResultListener,
             instances=instances,
             ammo_path=ammo_path,
             loop_count=loop_count,
+            is_regression=self.get_option(
+                'regress',
+                '0'),
             regression_component=self.get_option("component"),
             cmdline=cmdline,
         )  # todo: tanktype?
@@ -294,7 +296,6 @@ class Plugin(AbstractPlugin, AggregateResultListener,
         logger.info("Waiting for sender threads to join.")
         self.monitoring.join()
         self.upload.join()
-        self.finished = True
         try:
             self.lp_job.close(rc)
         except Exception:  # pylint: disable=W0703
@@ -380,8 +381,6 @@ class Plugin(AbstractPlugin, AggregateResultListener,
                 logger.info("Test stopped from Lunapark")
                 lp_job.is_alive = False
                 self.retcode = 8
-                break
-            if self.finished:
                 break
         logger.info("Closing Status sender thread")
 
@@ -490,17 +489,13 @@ class Plugin(AbstractPlugin, AggregateResultListener,
         PLUGIN_DIR = os.path.join(self.core.artifacts_base_dir, 'lunapark')
         if not os.path.exists(PLUGIN_DIR):
             os.makedirs(PLUGIN_DIR)
-        try:
-            os.symlink(
-                os.path.relpath(
-                    self.core.artifacts_dir,
-                    PLUGIN_DIR),
-                os.path.join(
-                    PLUGIN_DIR,
-                    str(name)))
-        # this exception catch for filesystems w/o symlinks
-        except OSError:
-            logger.warning('Unable to create symlink for artifact: %s', name)
+        os.symlink(
+            os.path.relpath(
+                self.core.artifacts_dir,
+                PLUGIN_DIR),
+            os.path.join(
+                PLUGIN_DIR,
+                str(name)))
 
     def _get_user_agent(self):
         plugin_agent = 'Uploader/{}'.format(self.VERSION)
@@ -576,7 +571,7 @@ class Plugin(AbstractPlugin, AggregateResultListener,
                      name=self.get_option('job_name', 'none').decode('utf8'),
                      description=self.get_option('job_dsc').decode('utf8'),
                      tank=self.core.job.tank,
-                     notify_list=self.get_option("notify"),
+                     notify_list=self.get_option("notify", '').split(' '),
                      load_scheme=loadscheme,
                      version=self.get_option('ver'),
                      log_data_requests=self.get_option('log_data_requests'),
@@ -732,6 +727,7 @@ class LPJob(object):
             instances=0,
             ammo_path=None,
             loop_count=None,
+            is_regression=None,
             regression_component=None,
             cmdline=None,
             is_starred=False,
@@ -744,6 +740,7 @@ class LPJob(object):
                                               ammo_path=ammo_path,
                                               loop_count=loop_count,
                                               version_tested=self.version,
+                                              is_regression=is_regression,
                                               component=regression_component,
                                               cmdline=cmdline,
                                               is_starred=is_starred,
