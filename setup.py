@@ -66,6 +66,7 @@ analytic tools for the results they produce.
         'yandextank.plugins.GraphiteUploader': ['config/*'],
         'yandextank.plugins.Influx': ['config/*'],
         'yandextank.plugins.JMeter': ['config/*'],
+        'yandextank.plugins.Locust': ['config/*'],
         'yandextank.plugins.JsonReport': ['config/*'],
         'yandextank.plugins.Monitoring': ['config/*'],
         'yandextank.plugins.Pandora': ['config/*'],

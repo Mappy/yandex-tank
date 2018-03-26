@@ -39,6 +39,7 @@ SECTIONS_PATTERNS = {
     'DataUploader': 'meta|overload',
     'Telegraf': 'telegraf|monitoring',
     'JMeter': 'jmeter',
+    'Locust': 'locust',
     'ResourceCheck': 'rcheck',
     'ShellExec': 'shell_?exec',
     'ShootExec': 'shoot_?exec',
@@ -48,6 +49,8 @@ SECTIONS_PATTERNS = {
     'JsonReport': 'json_report|jsonreport',
     'Pandora': 'pandora',
     'Influx': 'influx',
+    'SvgReport': 'svgreport',
+    'Report': 'report'
 
 }
 
@@ -392,6 +395,7 @@ class PluginInstance(object):
             'DataUploader': 'meta',
             'JMeter': 'jmeter',
             'JsonReport': 'json_report',
+            'Locust': 'locust',
             'Maven': 'maven',
             'Monitoring': 'monitoring',
             'Pandora': 'pandora',
@@ -401,6 +405,7 @@ class PluginInstance(object):
             'ShellExec': 'shellexec',
             'ShootExec': 'shootexec',
             'SvgReport': 'svgreport',
+            'Report': 'report',
             'Telegraf': 'telegraf',
             'TipsAndTricks': 'tips'
         }
