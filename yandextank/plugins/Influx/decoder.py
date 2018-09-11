@@ -67,9 +67,10 @@ class Decoder(object):
                 },
                 "time": timestamp,
                 "fields": {
-                    "active_threads": stat["metrics"]["instances"],
                     "RPS": data["overall"]["interval_real"]["len"],
                     "planned_requests": float(stat["metrics"]["reqps"]),
+                    "active_threads": stat["metrics"]["run"]["active_threads"]["max"],
+                    "global_resp_time": float(stat["metrics"]["overall"]["resp_time"]["mean"]),
                 },
             }, {
                 "measurement": "net_codes",
