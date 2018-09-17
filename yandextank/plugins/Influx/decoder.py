@@ -1,6 +1,5 @@
 import time
 
-
 def uts(dt):
     return int(time.mktime(dt.timetuple()))
 
@@ -44,6 +43,7 @@ class Decoder(object):
                 }]
         return points
 
+
     def decode_aggregate(self, data, stat):
         timestamp = int(data["ts"])
         points = [
@@ -71,6 +71,17 @@ class Decoder(object):
                     "planned_requests": float(stat["metrics"]["reqps"]),
                     "active_threads": stat["metrics"]["run"]["active_threads"]["max"],
                     "global_resp_time": float(stat["metrics"]["overall"]["resp_time"]["mean"]),
+                },
+            }, {
+                "measurement": "tagged_mean_resptimes",
+                "tags": {
+                    "tank": self.tank_tag,
+                    "uuid": self.uuid,
+                },
+                "time": timestamp,
+                "fields": {
+					tag_name: float(tag_rt_data["resp_time"]["mean"])
+					for tag_name, tag_rt_data in stat["metrics"]["tagged"].iteritems()
                 },
             }, {
                 "measurement": "net_codes",
