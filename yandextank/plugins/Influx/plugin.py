@@ -5,6 +5,7 @@
 import logging
 import sys
 import datetime
+import time
 from uuid import uuid4
 
 from builtins import str
@@ -47,24 +48,42 @@ class Plugin(AbstractPlugin, AggregateResultListener,
             password=self.get_option("password"),
             database=self.get_option("database"),
         )
-        grafana_root = self.get_option("grafana_root")
-        grafana_dashboard = self.get_option("grafana_dashboard")
-        uuid = str(uuid4())
+        self.grafana_root = self.get_option("grafana_root")
+        if self.grafana_root[-1:] != '/':
+            self.grafana_root = "{}{}".format(self.grafana_root, '/')
+        self.grafana_dashboard = self.get_option("grafana_dashboard")
+        self.uuid = str(uuid4())
         logger.info(
             "Grafana link: {grafana_root}"
             "dashboard/db/{grafana_dashboard}?var-uuid={uuid}&from=-5m&to=now".format(
-                grafana_root=grafana_root,
-                grafana_dashboard=grafana_dashboard,
-                uuid=uuid,
+                grafana_root=self.grafana_root,
+                grafana_dashboard=self.grafana_dashboard,
+                uuid=self.uuid,
             )
         )
-        self.decoder = Decoder(self.tank_tag, uuid)
+        self.decoder = Decoder(self.tank_tag, self.uuid)
+
+
 
     def start_test(self):
-        self.start_time = datetime.datetime.now()
+        self.start_time = datetime.datetime.now() - datetime.timedelta(seconds=10)
 
     def end_test(self, retcode):
-        self.end_time = datetime.datetime.now() + datetime.timedelta(minutes=1)
+        self.end_time = datetime.datetime.now() + datetime.timedelta(seconds=5)
+        def _display_report_link():
+            def _make_ts_string(dt):
+                ts = "{}".format(str(int(time.mktime(dt.timetuple()) * 1000)))
+                return ts
+
+            link = "{grafana_root}dashboard/db/{grafana_dashboard}?var-uuid={uuid}&from={ts_start}&to={ts_end}".format(
+                        grafana_root=self.grafana_root,
+                        grafana_dashboard=self.grafana_dashboard,
+                        uuid=self.uuid,
+                        ts_start=_make_ts_string(self.start_time),
+                        ts_end=_make_ts_string(self.end_time),
+                    )
+            logger.info("Grafana report: {}".format(link))
+        _display_report_link()
         return retcode
 
     def prepare_test(self):
