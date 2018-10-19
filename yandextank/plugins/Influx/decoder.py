@@ -70,6 +70,7 @@ class Decoder(object):
                     "RPS": data["overall"]["interval_real"]["len"],
                     "planned_requests": float(stat["metrics"]["reqps"]),
                     "active_threads": stat["metrics"]["run"]["active_threads"]["max"],
+                    "fail_ratio": stat["metrics"]["run"]["fail_ratio"]["mean"],
                     "global_resp_time": float(stat["metrics"]["overall"]["resp_time"]["mean"]),
                 },
             }, {
