@@ -51,7 +51,7 @@ class Plugin(AbstractPlugin, AggregateResultListener,
         self.grafana_root = self.get_option("grafana_root")
         if self.grafana_root[-1:] != '/':
             self.grafana_root = "{}{}".format(self.grafana_root, '/')
-        self.grafana_dashboard = self.get_option("grafana_dashboard")
+        self.grafana_dashboard = self.get_option("grafana_dashboard").lower()
         self.uuid = str(uuid4())
         logger.info(
             "Grafana link: {grafana_root}"
